@@ -1,22 +1,35 @@
-# NoticeWise AI
+# NoticeWise AI 2.0
 
-A stateless student workspace for checking campus notices against a profile. Open the sample library, choose a notice, edit the student profile, then select **Analyze notice**. The report shows field-by-field source excerpts, an academic verdict, a document checklist and a JSON download.
+A browser-based student notice checker. Paste text or upload a text-based PDF/TXT, edit the sample profile, analyze, and inspect quoted evidence, skill gaps, deadlines and document checklist. Export JSON if needed. The original orange/cream v0 design is retained.
 
-## Local setup
+## Run in GitHub Codespaces
 
-Use Node 24 and pnpm. Run `pnpm install --frozen-lockfile`, then `pnpm dev` and open localhost:3000. After installation no model downloads, API credentials, database or hosted inference service are needed. Documents and profile fields are held in memory; refreshing clears your edits.
+Use Node 24 and pnpm (the package manager version is specified in package.json). From the repository root:
 
-## Pipeline
+```bash
+corepack enable
+pnpm install --frozen-lockfile
+pnpm dev --hostname 0.0.0.0
+```
 
-1. The Next.js frontend accepts pasted text, TXT and text-based PDF. PDF.js extracts text with a bundled local worker. Limits: 5 MB, 50 PDF pages and 50,000 characters. No OCR.
-2. A small TypeScript TF-IDF and multinomial Naive Bayes classifier trained on twelve illustrative snippets labels notices as internship, scholarship, hackathon, workshop or unclassified. No generative AI is used. The predicted category does not decide eligibility.
-3. Anchored rule patterns in `lib/checker.ts` compare explicit CGPA, branch and graduation-year criteria while retaining the original evidence. Unrecognized wording or conflicting rules trigger manual review. Results are **academic matches only**: they do not confirm deadlines are still open or documents are available.
-4. Explicitly labeled deadlines and required documents appear separately from the verdict.
+Open forwarded port 3000. Run `pnpm test` for automated tests, `pnpm exec tsc --noEmit` for project type checking, and `pnpm build` for production verification. Vercel can import the repository as a Next.js project; no environment variables are required. Hosting and Codespaces quotas may apply.
 
-## Reliability
+## Architecture
 
-Run `node --experimental-strip-types --test tests/checker.mjs` and `pnpm exec tsc --noEmit`. Fixtures cover all sample categories, strict versus inclusive cutoffs, missing rules, unsupported conditions, contradictions, field mismatches, quoted evidence and repeatability. These are synthetic checks, not a real-world accuracy benchmark.
+Text/PDF → local PDF.js extraction → TypeScript TF-IDF / multinomial Naive Bayes classifier → conservative regex extraction → deterministic profile comparison → evidence report. Classification is independent of eligibility. Six categories use 60 synthetic training snippets; unknown inputs may be unclassified. No Python backend, paid API, database or hosted inference is used. Profile and notice stay in browser memory; refreshing clears them. Exported JSON contains the profile and original notice, so share it carefully.
 
-## Limits
+## Supported checks
 
-Use English notices with one criterion per line or sentence. Unknown titles, mixed clauses and PDF extraction artifacts can require manual review. Supported branches are CSE, IT, ECE, EE, ME and CE. Check the original notice with the organizer before applying. The classifier uses a small seed corpus, not a validated institutional dataset.
+CGPA (0–10), branch, graduation year, academic year (four-year degree), explicit mandatory skill lists, date-only deadlines and document lists. Deadline status is separate from academic matching; same-day deadlines require confirmation of time and time zone. Unknown rules, alternative skills, contradictions and invalid data require manual review. Skill matching is case-insensitive exact matching, not proficiency assessment. Empty skills mean unknown. The first short non-rule line may be treated as a heading; always check the original. Document checklist is manual, not proof of possession.
+
+## Testing
+
+37 automated regression tests (11 original + 26 additional) passed with Node 22.16. The visible Test Lab runs the 26 additional fixtures in the browser with a fixed date of 2026-11-24. Tests use synthetic notices, not independent real-world accuracy data. Full Next.js build, browser UI and PDF upload were not verified in the upgrade environment; run the commands above before submission.
+
+## Limitations
+
+English only; one criterion per line or sentence works best. Mixed clauses, unsupported rules, scanned PDFs, relative dates, and complex exceptions may need manual review. PDF limit 5 MB / 50 pages, notice limit 50,000 characters. No OCR, calendar integration, authentication or persistent storage. An Eligible result means supported extracted criteria match, not guaranteed eligibility or an open application.
+
+## Development disclosure
+
+Original prototype generated using v0 by Vercel. This upgrade used ChatGPT to modify the existing source, expand synthetic training data, add regression fixtures and improve documentation. NotebookLM was used for planning. The participant should review the code, run the app, validate results and accurately describe their own contributions before submitting. No claim of real-world accuracy or unverified participant work is made.
