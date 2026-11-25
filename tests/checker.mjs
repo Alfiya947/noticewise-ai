@@ -34,3 +34,42 @@ for (const c of cases) test(c.name,()=>{
  if(c.missing) assert.deepEqual(r.missingSkills,c.missing);
  for(const row of r.rows) {assert.ok(c.text.includes(row.quote));assert.ok(row.explanation);}
 });
+
+test("PDF notice with two headings and month-first deadline", () => {
+  const notice = [
+    "Sample Campus Notice",
+    "Software Development Internship 2026",
+    "Eligible branches: CSE, IT",
+    "Minimum CGPA: 7.0",
+    "Graduation year: 2028",
+    "Required skills: Java, SQL",
+    "Application deadline: December 15, 2026",
+    "Required documents: Resume, College ID, Marks card"
+  ].join("\n");
+
+  const profile = {
+    name: "Test Student",
+    branch: "CSE",
+    cgpa: "8.4",
+    year: "2028",
+    academicYear: "3",
+    skills: "Java, SQL"
+  };
+
+  const result = analyze(notice, profile, "2026-11-25");
+
+  if (result.category !== "Internship")
+    throw new Error("Incorrect category");
+
+  if (result.verdict !== "Eligible")
+    throw new Error("Incorrect eligibility verdict");
+
+  if (!result.deadlineStatus.startsWith("Open"))
+    throw new Error("Incorrect deadline status");
+
+  if (result.review.length !== 0)
+    throw new Error("Unexpected manual review");
+
+  if (result.docs.length !== 3)
+    throw new Error("Incorrect document extraction");
+});

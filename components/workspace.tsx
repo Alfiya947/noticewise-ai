@@ -315,7 +315,7 @@ export default function Workspace() {
         {result && <Report result={result} key={JSON.stringify(result)} />}
         <TestLab />
         <footer>
-          <span>NoticeWise AI</span>Private by design. Evidence first.
+          <span>NoticeWise</span>Private by design. Evidence first.
         </footer>
       </main>
       <dialog

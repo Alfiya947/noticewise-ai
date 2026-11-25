@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 export const metadata: Metadata = {
-  title: "NoticeWise AI — Student workspace",
+  title: "NoticeWise — Student workspace",
   description:
     "Check campus notices against your student profile with local, evidence-grounded eligibility matching.",
 };

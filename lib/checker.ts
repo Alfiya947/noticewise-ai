@@ -82,6 +82,17 @@ for (const [label, examples] of Object.entries(extra)) corpus[label] = [...(corp
 export const trainingCount = Object.values(corpus).flat().length;
 const tokens = (s: string): string[] => s.toLowerCase().match(/[a-z]+/g) || [];
 export function classify(text: string) {
+  const headings = text.trim().split(/\n+/).slice(0, 2);
+  const labels = ["Internship", "Scholarship", "Hackathon", "Workshop", "Placement", "Examination"];
+  for (const heading of headings) {
+    if (heading.length > 100 ||
+        /\b(?:must|required|eligible|minimum|deadline|cgpa|skills|documents|except|unless)\b/i.test(heading)) continue;
+    const matches = labels.filter(label =>
+      new RegExp("\\b" + label + "\\b", "i").test(heading)
+    );
+    if (matches.length === 1) return matches[0];
+  }
+
   const documents = Object.values(corpus).flat().map(tokens),
     vocab = [...new Set(documents.flat())];
   const vec = (s: string) => {
@@ -126,6 +137,10 @@ export function validateProfile(p: Profile): string[] {
 }
 const months = "January February March April May June July August September October November December".split(" ");
 function dateValue(raw: string): string | null {
+ raw = raw.trim().replace(
+   /^([a-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(20\d{2})$/i,
+   "$2 $1 $3"
+ );
  const m = raw.trim().match(/^(\d{1,2})(?:st|nd|rd|th)?[ -]([a-z]+)[ , -]+(20\d{2})$/i);
  if (!m) return null;
  const month = months.findIndex(x => x.toLowerCase() === m[2].toLowerCase() || x.slice(0,3).toLowerCase() === m[2].toLowerCase());
@@ -168,7 +183,14 @@ export function analyze(text: string, p: Profile, today = (() => { const d = new
    const required=splitList(m[1]);const own=(p.skills||"").split(/[,;\n]/).map(x=>x.trim().toLowerCase()); const missing=required.filter(x=>!own.includes(x.toLowerCase()));missingSkills.push(...missing);
    if(!p.skills?.trim()){review.push(`Skills not supplied: ${quote}`);continue;}
    row("Required skills",p.skills,!missing.length,missing.length?`Missing: ${missing.join(", ")}.`:"All listed skills supplied.");
-  } else if (i===0 && lines.length>1 && s.length<100 && !/\b(?:must|minimum|maximum|eligible|eligibility|required|only|deadline|cgpa|year|skills|branch|students|apply|register|need|criteria|qualification)\b/i.test(s)) { /* heading */ }
+  } else if (
+    i===1 &&
+    /^(?:sample campus notice|campus notice|college notice|notice)$/i.test(lines[0]) &&
+    s.length < 100 &&
+    /\b(?:internship|scholarship|hackathon|workshop|placement|examination)\b/i.test(s) &&
+    !/\b(?:must|required|eligible|only|minimum|maximum|deadline|cgpa|criteria|qualification|except|unless)\b/i.test(s)
+  ) { /* secondary notice title */ }
+  else if (i===0 && lines.length>1 && s.length<100 && !/\b(?:must|minimum|maximum|eligible|eligibility|required|only|deadline|cgpa|year|skills|branch|students|apply|register|need|criteria|qualification)\b/i.test(s)) { /* heading */ }
   else if (/^Applications are open for our summer engineering internship$/i.test(s)) { /* known informational sentence */ }
   else review.push(quote);
  }

@@ -1,4 +1,4 @@
-# NoticeWise AI 2.0
+# NoticeWise
 
 A browser-based student notice checker. Paste text or upload a text-based PDF/TXT, edit the sample profile, analyze, and inspect quoted evidence, skill gaps, deadlines and document checklist. Export JSON if needed. The original orange/cream v0 design is retained.
 
