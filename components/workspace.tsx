@@ -1,13 +1,10 @@
 "use client";
 import { useState, useRef } from "react";
 import {
-  ScanLine,
   FileText,
   BookOpen,
   Layers,
   ArrowRight,
-  Upload,
-  AlignLeft,
   UserRound,
   GraduationCap,
   ChartNoAxesColumnIncreasing,
@@ -16,7 +13,6 @@ import {
   ShieldCheck,
   FlaskConical,
   X,
-  FolderOpen,
   ChevronRight,
   Sparkles,
   ScanText,
@@ -24,26 +20,36 @@ import {
 import {
   samples,
   branches,
-  analyze,
   initialProfile,
   validateProfile,
   type Profile,
-  type Result,
 } from "@/lib/checker";
+import {
+  createLocalReport,
+  groundReportInText,
+  personalizeReport,
+  validateOpportunityReport,
+  type InputType,
+  type OpportunityReport,
+} from "@/lib/opportunities";
+import { extractPdfText } from "@/lib/pdf";
+import { NoticeInput, type NoticePayload } from "./notice-input";
+import { OpportunityDashboard } from "./opportunity-dashboard";
 import { TestLab } from "./test-lab";
-import { Report } from "./report";
 export default function Workspace() {
-  const [text, setText] = useState(samples[0].text),
+  const [text, setText] = useState(""),
+    [tab, setTab] = useState<InputType>("text"),
     [profile, setProfile] = useState(initialProfile),
     [draft, setDraft] = useState<Profile>(profile),
-    [result, setResult] = useState<Result | null>(null),
-    [tab, setTab] = useState("text"),
+    [result, setResult] = useState<OpportunityReport | null>(null),
     [modal, setModal] = useState(""),
     [error, setError] = useState(""),
+    [notice, setNotice] = useState(""),
+    [originalText, setOriginalText] = useState(""),
+    [analysisMode, setAnalysisMode] = useState("Gemini AI"),
     [busy, setBusy] = useState(false),
     [profileError, setProfileError] = useState("");
-  const dialog = useRef<HTMLDialogElement>(null),
-    file = useRef<HTMLInputElement>(null);
+  const dialog = useRef<HTMLDialogElement>(null);
   function open(m: string) {
     setModal(m);
     setProfileError("");
@@ -52,82 +58,102 @@ export default function Workspace() {
   }
   function update(s: string) {
     setText(s);
+    clearReport();
+  }
+  function clearReport() {
     setResult(null);
     setError("");
+    setNotice("");
+    setOriginalText("");
   }
-  async function ingest(f?: File) {
-    if (!f) return;
+  function scrollToReport() {
+    requestAnimationFrame(() =>
+      document.getElementById("report")?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    );
+  }
+  async function getLocalSource(payload: NoticePayload): Promise<string> {
+    if (payload.inputType === "text") {
+      if (!payload.text?.trim()) throw new Error("Paste a notice before analyzing.");
+      return payload.text;
+    }
+    if (payload.inputType === "pdf" && payload.file) return extractPdfText(payload.file);
+    throw new Error("Local analysis supports pasted text and text-based PDFs only.");
+  }
+  async function runLocal(payload: NoticePayload) {
+    clearReport();
     setBusy(true);
-    setError("");
     try {
-      if (f.size > 5 * 1024 * 1024) throw Error("Choose a file under 5 MB.");
-      let value = "";
-      if (/\.pdf$/i.test(f.name)) {
-        const pdf = await import("pdfjs-dist");
-        pdf.GlobalWorkerOptions.workerSrc = new URL(
-          "pdfjs-dist/build/pdf.worker.min.mjs",
-          import.meta.url,
-        ).toString();
-        const task = pdf.getDocument({ data: await f.arrayBuffer() });
-        const doc = await task.promise;
-        try {
-          if (doc.numPages > 50)
-            throw Error("Choose a PDF with 50 pages or fewer.");
-          for (let i = 1; i <= doc.numPages; i++) {
-            const c = await (await doc.getPage(i)).getTextContent();
-            value +=
-              c.items
-                .map((t) => ("str" in t ? t.str + (t.hasEOL ? "\n" : " ") : ""))
-                .join("") + "\n";
-          }
-        } finally {
-          await task.destroy();
-        }
-      } else if (/\.txt$/i.test(f.name)) value = await f.text();
-      else throw Error("Choose a PDF or TXT file.");
-      if (!value.trim())
-        throw Error(
-          "No readable text found. For a scanned PDF, paste a transcription.",
-        );
-      if (value.length > 50000)
-        throw Error(
-          "Notice exceeds 50,000 characters. Paste the relevant section.",
-        );
-      update(value.trim());
-      setTab("text");
-    } catch (e) {
-      setError(
-        e instanceof Error
-          ? e.message
-          : "Could not read the file. Try pasting its text.",
-      );
+      const source = await getLocalSource(payload);
+      const report = createLocalReport(source, profile, payload.inputType === "pdf" ? "pdf" : "text");
+      setResult(personalizeReport(report, profile));
+      setAnalysisMode("Local text analysis");
+      setNotice("This analysis ran in your browser. It checks only supported rules and does not send the notice to Gemini.");
+      setOriginalText(source);
+      scrollToReport();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Local text analysis could not read this notice.");
     } finally {
       setBusy(false);
-      if (file.current) file.current.value = "";
     }
   }
-  function run() {
-    if (!text.trim()) {
-      setError("Paste a notice or choose a sample first.");
-      return;
+  async function runGemini(payload: NoticePayload) {
+    clearReport();
+    setBusy(true);
+    try {
+      const form = new FormData();
+      form.set("inputType", payload.inputType);
+      if (payload.inputType === "text") form.set("text", payload.text || "");
+      if (payload.inputType === "pdf" || payload.inputType === "image") {
+        if (!payload.file) throw new Error("Choose a file before analyzing.");
+        form.set("file", payload.file);
+      }
+      if (payload.inputType === "url") form.set("url", payload.url || "");
+      const response = await fetch("/api/analyze", { method: "POST", body: form });
+      const body: unknown = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message = body && typeof body === "object" && "error" in body && typeof body.error === "string"
+          ? body.error
+          : "Gemini analysis could not be completed.";
+        throw new Error(message);
+      }
+      let report = validateOpportunityReport(body, payload.inputType);
+      if (payload.inputType === "text") report = groundReportInText(report, payload.text || "");
+      setResult(personalizeReport(report, profile));
+      setAnalysisMode("Gemini AI");
+      setNotice("Your student profile was matched in this browser and was not sent with the notice.");
+      setOriginalText(payload.inputType === "text" ? payload.text || "" : "");
+      scrollToReport();
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "Gemini analysis could not be completed.";
+      if (payload.inputType === "text" || payload.inputType === "pdf") {
+        try {
+          const source = await getLocalSource(payload);
+          const report = createLocalReport(source, profile, payload.inputType, message);
+          setResult(personalizeReport(report, profile));
+          setAnalysisMode("Local text-analysis fallback");
+          setNotice(`${message} A local fallback is shown; it checks only supported rules and does not provide AI extraction.`);
+          setOriginalText(source);
+          scrollToReport();
+        } catch (fallbackCause) {
+          setError(`${message} ${fallbackCause instanceof Error ? fallbackCause.message : "Local fallback could not read this notice."}`);
+        }
+      } else {
+        setError(message);
+      }
+    } finally {
+      setBusy(false);
     }
-    setResult(analyze(text, profile));
-    requestAnimationFrame(() =>
-      document
-        .querySelector("#report")
-        ?.scrollIntoView({ behavior: "smooth", block: "start" }),
-    );
   }
   return (
     <>
       <header>
         <div className="wrap bar">
-          <a href="#" className="brand">
+          <div className="brand" aria-label="NoticeWise AI">
             <span className="brandmark">
               <ScanText size={24} />
             </span>
             NoticeWise <span className="ai">AI</span>
-          </a>
+          </div>
           <div className="nav">
             <span className="active">
               <Layers size={15} /> Workspace
@@ -158,11 +184,11 @@ export default function Workspace() {
               <i /> STUDENT TOOLKIT
             </div>
             <h1>
-              Notice, <em>decoded.</em>
+              Find your <em>next step.</em>
             </h1>
             <p>
-              Turn campus notices into clear eligibility checks,
-              <br className="desktop" /> backed by evidence from the source.
+              Your Personal AI Opportunity Navigator.
+              <br className="desktop" /> Extract, compare, and act on campus opportunities.
             </p>
           </div>
           <div className="art">
@@ -172,7 +198,7 @@ export default function Workspace() {
         <div className="workheading">
           <h2>Your workspace</h2>
           <span className="local">
-            <i /> Local session
+            <i /> Session only
           </span>
         </div>
         <div className="columns">
@@ -186,80 +212,18 @@ export default function Workspace() {
                 <h2>Notice input</h2>
               </div>
             </div>
-            <p className="desc">
-              Add a campus notice to check your eligibility.
-            </p>
-            <div className="tabs">
-              <button
-                aria-pressed={tab === "text"}
-                className={tab === "text" ? "on" : ""}
-                onClick={() => setTab("text")}
-              >
-                <AlignLeft /> Paste text
-              </button>
-              <button
-                aria-pressed={tab === "file"}
-                className={tab === "file" ? "on" : ""}
-                onClick={() => setTab("file")}
-              >
-                <Upload /> Upload file
-              </button>
-            </div>
-            {tab === "text" ? (
-              <>
-                <div className="between inputlabel">
-                  <label htmlFor="notice">Notice text</label>
-                  <button className="link" onClick={() => open("library")}>
-                    <FlaskConical size={14} /> Try a sample
-                  </button>
-                </div>
-                <textarea
-                  id="notice"
-                  maxLength={50000}
-                  value={text}
-                  onChange={(e) => update(e.target.value)}
-                  placeholder="Paste the full notice here…"
-                />
-                <p className="count">
-                  {text.length.toLocaleString()} characters
-                </p>
-              </>
-            ) : (
-              <div
-                className="drop"
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  if (!busy) ingest(e.dataTransfer.files[0]);
-                }}
-              >
-                <FolderOpen />
-                <b>Drop your notice here</b>
-                <span>Text-based PDF or TXT · Up to 5 MB</span>
-                <button
-                  disabled={busy}
-                  className="outline"
-                  onClick={() => file.current?.click()}
-                >
-                  {busy ? "Reading file…" : "Choose file"}
-                </button>
-              </div>
-            )}
-            <input
-              ref={file}
-              hidden
-              type="file"
-              accept=".pdf,.txt"
-              onChange={(e) => ingest(e.target.files?.[0])}
+            <NoticeInput
+              tab={tab}
+              onTabChange={setTab}
+              text={text}
+              onTextChange={update}
+              onOpenLibrary={() => open("library")}
+              onInputChange={clearReport}
+              onAnalyze={runGemini}
+              onLocalFallback={runLocal}
+              busy={busy}
+              error={error}
             />
-            {error && (
-              <p role="alert" className="err">
-                {error}
-              </p>
-            )}
-            <button className="primary" disabled={busy} onClick={run}>
-              <ScanLine size={18} /> Analyze notice <ArrowRight size={17} />
-            </button>
           </section>
           <aside className="card profile">
             <div className="between">
@@ -276,7 +240,7 @@ export default function Workspace() {
                 <Pencil size={13} /> Edit
               </button>
             </div>
-            <p className="desc">Your details, used for matching.</p>
+            <p className="desc">Used locally for matching. Profile details are not sent to Gemini.</p>
             <div className="identity">
               <span className="avatar big">
                 {profile.name
@@ -296,7 +260,7 @@ export default function Workspace() {
               [ChartNoAxesColumnIncreasing, "CGPA", profile.cgpa + " / 10"],
               [CalendarDays, "Graduation year", profile.year],
               [GraduationCap, "Study year", profile.academicYear || "Not supplied"],
-              [Sparkles, "Skills", profile.skills || "Not supplied"],
+              [Sparkles, "Self-reported skills", profile.skills || "Not supplied"],
             ].map(([Icon, label, val]) => {
               const I = Icon as typeof GraduationCap;
               return (
@@ -308,11 +272,19 @@ export default function Workspace() {
               );
             })}
             <div className="privacy">
-              <ShieldCheck size={16} /> Your profile stays in this session.
+              <ShieldCheck size={16} /> Matched in-browser; not sent to Gemini.
             </div>
           </aside>
         </div>
-        {result && <Report result={result} key={JSON.stringify(result)} />}
+        {result && (
+          <OpportunityDashboard
+            report={result}
+            analysisMode={analysisMode}
+            notice={notice}
+            originalText={originalText}
+            key={JSON.stringify(result)}
+          />
+        )}
         <TestLab />
         <footer>
           <span>NoticeWise</span>Private by design. Evidence first.
@@ -371,7 +343,7 @@ export default function Workspace() {
               const issues = validateProfile(draft);
               if (issues.length) { setProfileError(issues.join(" ")); return; }
               setProfile({ ...draft, name: draft.name.trim() });
-              setResult(null);
+              clearReport();
               dialog.current?.close();
             }}
           >
@@ -423,7 +395,7 @@ export default function Workspace() {
               />
             </label>
             <label>Academic year (four-year degree)<select value={draft.academicYear || ""} onChange={e=>setDraft({...draft,academicYear:e.target.value})}><option value="">Not supplied</option>{[1,2,3,4].map(y=><option key={y} value={y}>{y}</option>)}</select></label>
-            <label>Skills (comma separated)<input value={draft.skills || ""} onChange={e=>setDraft({...draft,skills:e.target.value})} placeholder="Java, SQL" /></label>
+            <label>Self-reported skills (comma separated)<input value={draft.skills || ""} onChange={e=>setDraft({...draft,skills:e.target.value})} placeholder="Java, SQL" /></label>
             {profileError && <p role="alert" className="err">{profileError}</p>}
             <button className="primary">
               Save profile <ArrowRight size={16} />

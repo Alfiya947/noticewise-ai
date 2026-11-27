@@ -1,35 +1,46 @@
 # NoticeWise
 
-A browser-based student notice checker. Paste text or upload a text-based PDF/TXT, edit the sample profile, analyze, and inspect quoted evidence, skill gaps, deadlines and document checklist. Export JSON if needed. The original orange/cream v0 design is retained.
+**Your Personal AI Opportunity Navigator** turns student notices into structured opportunity details and conservative, evidence-grounded profile checks. The existing Next.js application and deterministic eligibility engine are retained; this upgrade adds a server-side Gemini extraction path and a multi-opportunity results dashboard.
 
-## Run in GitHub Codespaces
+## Run locally
 
-Use Node 24 and pnpm (the package manager version is specified in package.json). From the repository root:
+Use Node.js 24 and pnpm. From the repository root:
 
 ```bash
 corepack enable
 pnpm install --frozen-lockfile
-pnpm dev --hostname 0.0.0.0
+pnpm dev
 ```
 
-Open forwarded port 3000. Run `pnpm test` for automated tests, `pnpm exec tsc --noEmit` for project type checking, and `pnpm build` for production verification. Vercel can import the repository as a Next.js project; no environment variables are required. Hosting and Codespaces quotas may apply.
+Open the local app at `http://localhost:3000`. Run `pnpm test` for the automated suite, `pnpm exec tsc --noEmit` for TypeScript, and `pnpm build` for a production build.
 
-## Architecture
+## Environment variables
 
-Text/PDF → local PDF.js extraction → TypeScript TF-IDF / multinomial Naive Bayes classifier → conservative regex extraction → deterministic profile comparison → evidence report. Classification is independent of eligibility. Six categories use 60 synthetic training snippets; unknown inputs may be unclassified. No Python backend, paid API, database or hosted inference is used. Profile and notice stay in browser memory; refreshing clears them. Exported JSON contains the profile and original notice, so share it carefully.
+| Variable | Required | Description |
+| --- | --- | --- |
+| `GEMINI_API_KEY` | For Gemini analysis | Google Gemini API key. Read only by the server route; never expose it with a `NEXT_PUBLIC_` prefix. |
+| `GEMINI_MODEL` | No | Gemini model ID. Defaults to `gemini-3.6-flash`; use a Gemini 3 or 4 model supported by the Interactions API, structured output, and URL Context. Unsupported or retired IDs fall back to the default with a report warning. |
 
-## Supported checks
+Set these in the Vercel project environment settings for the environments you use, or in a local development-only environment file. Do not commit secrets. Gemini API quota or billing may depend on the Google account and model selected.
 
-CGPA (0–10), branch, graduation year, academic year (four-year degree), explicit mandatory skill lists, date-only deadlines and document lists. Deadline status is separate from academic matching; same-day deadlines require confirmation of time and time zone. Unknown rules, alternative skills, contradictions and invalid data require manual review. Skill matching is case-insensitive exact matching, not proficiency assessment. Empty skills mean unknown. The first short non-rule line may be treated as a heading; always check the original. Document checklist is manual, not proof of possession.
+If `GEMINI_API_KEY` is absent or Gemini is unavailable, pasted text and text-based PDFs can use the clearly labeled local fallback. Image and URL analysis require a configured Gemini key.
 
-## Testing
+## Architecture and data flow
 
-37 automated regression tests (11 original + 26 additional) passed with Node 22.16. The visible Test Lab runs the 26 additional fixtures in the browser with a fixed date of 2026-11-24. Tests use synthetic notices, not independent real-world accuracy data. Full Next.js build, browser UI and PDF upload were not verified in the upgrade environment; run the commands above before submission.
+- The browser requires explicit consent before sending notice content to `/api/analyze`.
+- The Node.js route validates input type, PDF/image signatures, file size, public URL shape, request origin, and a per-process rate limit. It calls Google’s `@google/genai` Interactions API with a structured JSON schema; public URLs use Gemini URL Context. If the selected model is overloaded, it retries once with an alternate supported Gemini 3 model.
+- The route validates model output before returning it. Pasted-text evidence and registration URLs are checked against the submitted text. The Gemini key and student profile are not included in the browser request or model prompt.
+- Student profile matching uses the existing deterministic TypeScript checker in the browser. Only supported mandatory conditions can produce a match; unrecognized or ambiguous requirements require review. Skill names are self-reported and do not demonstrate proficiency.
+- The UI supports pasted text (50,000 characters maximum), JPG/JPEG/JFIF/PNG/WEBP images, PDFs, and public HTTP(S) pages. Image and PDF uploads are limited to 4 MB. The browser does not persist the notice, upload, profile, or checklist state.
 
-## Limitations
+## Accuracy, privacy, and limitations
 
-English only; one criterion per line or sentence works best. Mixed clauses, unsupported rules, scanned PDFs, relative dates, and complex exceptions may need manual review. PDF limit 5 MB / 50 pages, notice limit 50,000 characters. No OCR, calendar integration, authentication or persistent storage. An Eligible result means supported extracted criteria match, not guaranteed eligibility or an open application.
+Gemini output can be incomplete or incorrect and is not independent verification, admission approval, or an official eligibility decision. Dates are preserved as written; the local deadline checker only derives a date status when it can parse an explicit year. Unknown years, relative dates, conflicting statements, unsupported requirements, and unclear content need confirmation with the organizer. Event date, application deadline, registration status, and admission status remain separate fields.
 
-## Development disclosure
+Uploaded content and page text are treated as untrusted source data. The route instructs Gemini to ignore embedded instructions, extract facts only, and avoid inventing missing details. The app does not store notice content or profile data, but content is sent to Google Gemini after consent when AI analysis is available. Public pages behind sign-in, inaccessible URLs, low-quality scans, unusual layouts, and image text that cannot be read may produce warnings or no results. URL Context is limited to publicly accessible pages supported by Gemini.
 
-Original prototype generated using v0 by Vercel. This upgrade used ChatGPT to modify the existing source, expand synthetic training data, add regression fixtures and improve documentation. NotebookLM was used for planning. The participant should review the code, run the app, validate results and accurately describe their own contributions before submitting. No claim of real-world accuracy or unverified participant work is made.
+The rate limit is an in-memory guard (12 requests per minute per observed client IP) and is not a shared distributed quota across serverless instances. This project adds no database, authentication, chatbot, or other third-party storage service. The optional chatbot is deferred until the core extraction and dashboard are validated.
+
+## Tests
+
+The automated tests preserve the existing eligibility regression cases and add structured response validation, evidence/link grounding, missing-year handling, and conservative profile matching. These tests cover deterministic behavior; they do not establish Gemini accuracy or real-world eligibility outcomes. The in-browser Test Lab remains a regression tool for the local fallback only.
