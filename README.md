@@ -31,7 +31,7 @@ If `GEMINI_API_KEY` is absent or Gemini is unavailable, pasted text and text-bas
 - The Node.js route validates input type, PDF/image signatures, file size, public URL shape, request origin, and a per-process rate limit. It calls Google’s `@google/genai` Interactions API with a structured JSON schema; public URLs use Gemini URL Context. If the selected model is overloaded, it retries once with an alternate supported Gemini 3 model.
 - The route validates model output before returning it. Pasted-text evidence and registration URLs are checked against the submitted text. The Gemini key and student profile are not included in the browser request or model prompt.
 - Student profile matching uses the existing deterministic TypeScript checker in the browser. Only supported mandatory conditions can produce a match; unrecognized or ambiguous requirements require review. Skill names are self-reported and do not demonstrate proficiency.
-- The UI supports pasted text (50,000 characters maximum), JPG/PNG/WEBP images, PDFs, and public HTTP(S) pages. Image and PDF uploads are limited to 4 MB. The browser does not persist the notice, upload, profile, or checklist state.
+- The UI supports pasted text (50,000 characters maximum), JPG/JPEG/JFIF/PNG/WEBP images, PDFs, and public HTTP(S) pages. Image and PDF uploads are limited to 4 MB. The browser does not persist the notice, upload, profile, or checklist state.
 
 ## Accuracy, privacy, and limitations
 

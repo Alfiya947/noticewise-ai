@@ -81,11 +81,11 @@ export function NoticeInput({
     onInputChange();
     const acceptedType = tab === "pdf"
       ? file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")
-      : ["image/jpeg", "image/png", "image/webp"].includes(file.type)
-        || /\.(?:jpe?g|png|webp)$/i.test(file.name);
+      : ["image/jpeg", "image/jfif", "image/jpg", "image/pjpeg", "image/png", "image/webp"].includes(file.type.toLowerCase())
+        || /\.(?:jpe?g|jfif|png|webp)$/i.test(file.name);
     if (!acceptedType) {
       setSelectedFile(null);
-      setFileError(tab === "pdf" ? "Choose a PDF document." : "Choose a JPG, PNG, or WEBP image.");
+      setFileError(tab === "pdf" ? "Choose a PDF document." : "Choose a JPG, JPEG/JFIF, PNG, or WEBP image.");
       return;
     }
     if (file.size === 0 || file.size > MAX_FILE_BYTES) {
@@ -108,7 +108,9 @@ export function NoticeInput({
     : tab === "url"
       ? Boolean(url.trim())
       : Boolean(selectedFile);
-  const accept = tab === "pdf" ? ".pdf,application/pdf" : ".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp";
+  const accept = tab === "pdf"
+    ? ".pdf,application/pdf"
+    : ".jpg,.jpeg,.jfif,.png,.webp,image/jpeg,image/jfif,image/jpg,image/pjpeg,image/png,image/webp";
 
   return (
     <>
@@ -161,7 +163,7 @@ export function NoticeInput({
           >
             <FolderOpen aria-hidden="true" />
             <b>{tab === "pdf" ? "Add a circular or opportunity PDF" : "Add a poster or screenshot"}</b>
-            <span>{tab === "pdf" ? "PDF · Up to 4 MB" : "JPG, PNG, or WEBP · Up to 4 MB"}</span>
+            <span>{tab === "pdf" ? "PDF · Up to 4 MB" : "JPG, JPEG/JFIF, PNG, or WEBP · Up to 4 MB"}</span>
             <input
               ref={fileInput}
               hidden
@@ -212,7 +214,7 @@ export function NoticeInput({
               autoComplete="url"
               placeholder="https://college.edu/opportunities"
               value={url}
-                  onChange={(event) => {
+              onChange={(event) => {
                     setConsent(false);
                     onInputChange();
                     setUrl(event.target.value);
