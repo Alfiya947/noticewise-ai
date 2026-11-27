@@ -1,9 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 export const metadata: Metadata = {
-  title: "NoticeWise — Student workspace",
+  title: "NoticeWise — Your Personal AI Opportunity Navigator",
   description:
-    "Check campus notices against your student profile with local, evidence-grounded eligibility matching.",
+    "Analyze campus notices, posters, PDFs, and public opportunity pages with evidence-grounded AI extraction and local eligibility matching.",
 };
 export const viewport: Viewport = {
   themeColor: "#faf9f6",
